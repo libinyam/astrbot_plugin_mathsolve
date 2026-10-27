@@ -18,12 +18,14 @@ try:
     from .markdown_inline_boxes import BOX_RE, MAX_BOXES, render_box, inline_text, split_inline_code, boxes_for_model, is_box_label, plain_text
     from .markdown_math_scroll import SCROLL_RE, MATH_RE, MAX_SCROLL_FORMULAS, render_scroll_formula, long_inline_formula, scroll_formulas_for_model
     from .markdown_box_context import BoxContext
+    from .billing import BillingDenied, billed
 except ImportError:
     from markdown_svg import MAX_DIAGRAMS, SvgFormatError, svg_markdown_image, decode_svg_data, sanitize_svg
     from markdown_plot import function_plot_svg
     from markdown_inline_boxes import BOX_RE, MAX_BOXES, render_box, inline_text, split_inline_code, boxes_for_model, is_box_label, plain_text
     from markdown_math_scroll import SCROLL_RE, MATH_RE, MAX_SCROLL_FORMULAS, render_scroll_formula, long_inline_formula, scroll_formulas_for_model
     from markdown_box_context import BoxContext
+    from billing import BillingDenied, billed
 
 logger = logging.getLogger('astrbot')
 MAX_DOCUMENT_BYTES = 1024 * 1024
@@ -337,6 +339,9 @@ class MarkdownOutputMixin:
             return {'ok': False, 'send_ok': False, 'error': '缺少当前消息上下文，不能确定文件接收者。'}
         if not self._cfg('enable_md_output', True):
             return {'ok': False, 'send_ok': False, 'error': 'Markdown 文档输出未启用。'}
+        denial = self._billing_denial(event)
+        if denial:
+            return {'ok': False, 'send_ok': False, 'error': denial}
         if not markdown_document_requested(event):
             return {'ok': False, 'send_ok': False, 'error_code': 'md_not_requested',
                     'error': '本轮用户未要求 Markdown 文档，不要擅自发送文件。'}
@@ -403,7 +408,7 @@ class MarkdownOutputMixin:
         except MarkdownFormatError:
             result = {'ok': False, 'send_ok': False, 'error_code': 'md_format_failed',
                       'error': 'Markdown 格式校验未通过，已停止发送，请重新发起请求。'}
-        except (PdfImageInputError, ValueError) as exc:
+        except (PdfImageInputError, BillingDenied, ValueError) as exc:
             result = {'ok': False, 'send_ok': False, 'error': str(exc)}
         except Exception as exc:
             logger.warning('[mathsolve] MD Agent 工具失败: %s', type(exc).__name__)
@@ -468,6 +473,7 @@ class MarkdownOutputMixin:
                 while len(mapping) > 200:
                     mapping.pop(next(iter(mapping)))
 
+    @billed
     async def _solve_math_to_markdown(self, problem_text, event, image_urls=None, reference=''):
         try:
             from .shared import _get_sender_display_name, _sanitize_filename
@@ -532,6 +538,10 @@ class MarkdownOutputMixin:
         event.set_extra('mathsolve_md_generation', True)
         if not self._cfg('enable_md_output', True):
             yield event.plain_result('Markdown 文档输出未启用')
+            return
+        denial = self._billing_denial(event)
+        if denial:
+            yield event.plain_result(denial)
             return
         match = re.fullmatch(r'\s*/?md(?:\s+([\s\S]*))?\s*', event.message_str or '', re.I)
         if not match:

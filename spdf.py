@@ -6,6 +6,7 @@ try:
     from .spdf_schedule import SpdfAccessDenied, SpdfAdmission, spdf_access_denial
     from .token_usage import tracked_spdf_tokens, generate_with_token_usage, append_current_report
     from .spdf_concurrency import limited_spdf_generation
+    from .billing import billed
 except ImportError:
     from shared import *
     from pdf_styles import randomized_pdf_style
@@ -13,6 +14,7 @@ except ImportError:
     from spdf_schedule import SpdfAccessDenied, SpdfAdmission, spdf_access_denial
     from token_usage import tracked_spdf_tokens, generate_with_token_usage, append_current_report
     from spdf_concurrency import limited_spdf_generation
+    from billing import billed
 
 
 class SpdfMixin:
@@ -898,6 +900,7 @@ class SpdfMixin:
 
         return final_raw
 
+    @billed
     @limited_spdf_generation
     @tracked_generation('spdf')
     @tracked_spdf_tokens

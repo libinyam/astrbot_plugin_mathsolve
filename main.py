@@ -21,6 +21,7 @@ try:
     from .markdown_output import MarkdownOutputMixin, markdown_document_requested, constrain_markdown_tool
     from .markdown_command import MarkdownMixedMessageFilter
     from .pdf_theme_commands import PdfThemeMixin
+    from .billing import BillingMixin
     from .image_reply_policy import image_reply_decision, plain_reply_text, constrain_image_tool, image_tool_already_sent, track_active_followup, prepare_forward_reply_evidence
 except ImportError:
     from shared import *
@@ -36,6 +37,7 @@ except ImportError:
     from markdown_output import MarkdownOutputMixin, markdown_document_requested, constrain_markdown_tool
     from markdown_command import MarkdownMixedMessageFilter
     from pdf_theme_commands import PdfThemeMixin
+    from billing import BillingMixin
     from image_reply_policy import image_reply_decision, plain_reply_text, constrain_image_tool, image_tool_already_sent, track_active_followup, prepare_forward_reply_evidence
 
 
@@ -405,7 +407,7 @@ class Md2ImgSolveMathMdTool(FunctionTool[AstrAgentContext]):
     "Markdown转图片 + 数学图文解答 + /pdf LaTeX解答 + /spdf DeepThink多角色迭代 + 知识库检索 + 对话记忆",
     "1.17.3",
 )
-class MarkdownConverterPlugin(PdfThemeMixin, MarkdownOutputMixin, UsageReportMixin, DailyReportMixin, MemoryMixin, SpdfMixin, PdfMixin, RenderMixin, Star):
+class MarkdownConverterPlugin(BillingMixin, PdfThemeMixin, MarkdownOutputMixin, UsageReportMixin, DailyReportMixin, MemoryMixin, SpdfMixin, PdfMixin, RenderMixin, Star):
     def __init__(self, context: Context, config: Optional[Dict[str, Any]] = None):
         super().__init__(context)
         self.config: Dict[str, Any] = dict(config) if isinstance(config, dict) else {}
@@ -1639,6 +1641,30 @@ class MarkdownConverterPlugin(PdfThemeMixin, MarkdownOutputMixin, UsageReportMix
         if message:
             yield event.plain_result(message)
 
+    # === 答疑计费：余额与兑换码 ===
+    @filter.command("余额")
+    async def cmd_balance(self, event: AstrMessageEvent):
+        yield event.plain_result(self._billing_balance_text(event.get_sender_id()))
+
+    @filter.command("兑换")
+    async def cmd_redeem(self, event: AstrMessageEvent, code: str = ""):
+        yield event.plain_result(self._billing_redeem(event, code))
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @filter.command("生成兑换码")
+    async def cmd_create_codes(self, event: AstrMessageEvent, amount: str = "", count: str = "1"):
+        yield event.plain_result(self._billing_create_codes(event, amount, count))
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @filter.command("加余额")
+    async def cmd_admin_add_balance(self, event: AstrMessageEvent, uid: str = "", amount: str = ""):
+        yield event.plain_result(self._billing_admin_add(event, uid, amount))
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @filter.command("查余额")
+    async def cmd_admin_balance(self, event: AstrMessageEvent, uid: str = ""):
+        yield event.plain_result(self._billing_balance_text(uid) if uid.strip() else "用法：/查余额 <QQ>")
+
     @filter.command("md")
     @filter.custom_filter(MarkdownMixedMessageFilter)
     async def cmd_md(self, event: AstrMessageEvent):
@@ -1654,6 +1680,10 @@ class MarkdownConverterPlugin(PdfThemeMixin, MarkdownOutputMixin, UsageReportMix
     async def cmd_pdf(self, event: AstrMessageEvent):
         if not self._cfg("enable_pdf_output", True):
             yield event.plain_result("PDF 输出未启用")
+            return
+        denial = self._billing_denial(event)
+        if denial:
+            yield event.plain_result(denial)
             return
 
         raw = (getattr(event, "message_str", "") or "").strip()
@@ -1826,6 +1856,10 @@ class MarkdownConverterPlugin(PdfThemeMixin, MarkdownOutputMixin, UsageReportMix
             admission = self._spdf_require_access(event)
         except SpdfAccessDenied as e:
             yield event.plain_result(str(e))
+            return
+        denial = self._billing_denial(event)
+        if denial:
+            yield event.plain_result(denial)
             return
 
         raw = (getattr(event, "message_str", "") or "").strip()

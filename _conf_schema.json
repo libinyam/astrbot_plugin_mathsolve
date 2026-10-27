@@ -1,4 +1,31 @@
 {
+  "billing": {
+    "type": "object",
+    "description": "答疑计费",
+    "hint": "只在计费群中按模型 token 扣费，仅 /pdf、/spdf、/md 及对应 Agent 工具；普通聊天不扣费。余额按 QQ 号记，用 /兑换 充值。",
+    "items": {
+      "billing_enabled": {
+        "type": "bool", "description": "启用答疑计费", "default": true,
+        "hint": "关闭后所有群免费。计费群名单为空时同样不扣任何人的费。"
+      },
+      "billing_group_ids": {
+        "type": "list", "description": "计费群号名单", "default": [],
+        "hint": "每项一个群号。只有名单内的群扣费；其他群和私聊免费。余额 ≤ 0 时拒绝新的答疑。"
+      },
+      "billing_free_qq": {
+        "type": "list", "description": "免计费 QQ 名单", "default": [],
+        "hint": "每项一个 QQ 号。名单内用户在计费群中也不扣费。管理员不会自动免费，需要时请把自己加入。"
+      },
+      "billing_prices": {
+        "type": "text", "description": "模型价目表", "default": "* 10 30",
+        "hint": "每行：模型名 输入价 输出价，单位 元/百万 token，例如 gpt-5 10 30。模型名填 provider 中配置的模型名；* 行是未列出模型的默认价，必须保留。缓存命中的输入按普通输入价计。接口未返回用量时按 1 字符≈1 token、每张图 1000 token 估算。"
+      },
+      "billing_low_balance_yuan": {
+        "type": "float", "description": "低余额提醒阈值（元）", "default": 1.0,
+        "hint": "余额低于此值时，每次答疑完成后附一行本次消耗与余额。"
+      }
+    }
+  },
   "pdf_usage_report": {
     "type": "object",
     "description": "PDF 调用统计日报",

@@ -4,6 +4,7 @@ try:
     from .pdf_styles import randomized_pdf_style
     from .usage_tracking import tracked_generation, record_model_call
     from .token_usage import generate_with_token_usage
+    from .billing import billed
     from .qq_image_recovery import (PdfImageInputError, QqImageRecoveryMixin,
                                     image_cache_identity, qq_image_parts, safe_image_error)
 except ImportError:
@@ -11,6 +12,7 @@ except ImportError:
     from pdf_styles import randomized_pdf_style
     from usage_tracking import tracked_generation, record_model_call
     from token_usage import generate_with_token_usage
+    from billing import billed
     from qq_image_recovery import (PdfImageInputError, QqImageRecoveryMixin,
                                    image_cache_identity, qq_image_parts, safe_image_error)
 
@@ -711,6 +713,7 @@ class PdfMixin(QqImageRecoveryMixin):
             raise RuntimeError(f"PDF 模型调用全部失败({purpose or '-'}): {summary or last_exc}") from last_exc
         raise RuntimeError("PDF 模型调用全部失败")
 
+    @billed
     @tracked_generation('pdf')
     @randomized_pdf_style
     async def _solve_math_to_pdf(

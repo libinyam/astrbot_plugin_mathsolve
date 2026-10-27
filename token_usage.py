@@ -10,6 +10,11 @@ from pathlib import Path
 import threading
 from xml.sax.saxutils import escape
 
+try:
+    from .billing import current_job
+except ImportError:
+    from billing import current_job
+
 _current = ContextVar('mathsolve_spdf_tokens', default=None)
 _render_lock = threading.Lock()
 _log = logging.getLogger('astrbot')
@@ -137,7 +142,8 @@ def tracked_spdf_tokens(fn):
 
 async def generate_with_token_usage(owner, **kwargs):
     ledger = _current.get()
-    if ledger is None:
+    job = current_job()
+    if ledger is None and job is None:
         return await owner.context.llm_generate(**kwargs)
     provider_id = kwargs.get('chat_provider_id', '')
     model = provider_id
@@ -146,7 +152,7 @@ async def generate_with_token_usage(owner, **kwargs):
         model = provider.get_model() or provider_id
     except Exception:
         pass
-    call = ledger.begin(model)
+    call = ledger.begin(model) if ledger is not None else {}
     try:
         response = await owner.context.llm_generate(**kwargs)
     except asyncio.CancelledError:
@@ -156,13 +162,17 @@ async def generate_with_token_usage(owner, **kwargs):
         call['state'] = 'failed'
         raise
     call['state'] = 'returned'
+    usage = Usage()
     try:
         actual = field(field(response, 'raw_completion'), 'model')
         if isinstance(actual, str) and actual.strip(): call['model'] = actual.strip()
-        call['usage'] = extract_usage(response)
+        usage = call['usage'] = extract_usage(response)
     except Exception as exc:
         # Telemetry must not turn a successful answer into a failed answer.
         _log.warning('[mathsolve] token usage extraction failed: %s', type(exc).__name__)
+    if job is not None:
+        # Price by the configured model name; the footer keeps the API-reported one.
+        job.charge(model, usage.input, usage.output, kwargs, response)
     return response
 
 
